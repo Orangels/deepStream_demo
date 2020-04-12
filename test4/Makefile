@@ -19,6 +19,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 ################################################################################
+CC = g++
 
 APP:= deepstream-test4-app
 
@@ -40,14 +41,14 @@ PKGS:= gstreamer-1.0
 
 OBJS:= $(SRCS:.c=.o)
 
-CFLAGS+= -I../../../includes
+CFLAGS+= -I/home/nano/Downloads/deepstream_sdk_v4.0.2_jetson/sources/includes -I/usr/include/opencv4/ -I/usr/local/cuda/targets/aarch64-linux/include/
 
 CFLAGS+= `pkg-config --cflags $(PKGS)`
 
 LIBS:= `pkg-config --libs $(PKGS)`
 
 LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_meta -lnvds_meta -lrt \
-       -Wl,-rpath,$(LIB_INSTALL_DIR)
+       -Wl,-rpath,$(LIB_INSTALL_DIR) -lnvbufsurface -lopencv_imgcodecs -lopencv_core -lopencv_imgproc -L/usr/local/cuda/targets/aarch64-linux/lib/ -lnvbufsurftransform -lcuda -lcudart
 
 all: $(APP)
 

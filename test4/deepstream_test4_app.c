@@ -27,8 +27,20 @@
 #include <time.h>
 #include <sys/timeb.h>
 
+#include <opencv2/core.hpp>
+#include <opencv2/videoio.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgproc/types_c.h>
+
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
+
+#include "gstnvdsmeta.h"
+#include "nvbufsurface.h"
+#include "nvbufsurftransform.h"
+using namespace std;
+using namespace cv;
 
 #define MAX_DISPLAY_LEN 64
 #define MAX_TIME_STAMP_LEN 32
@@ -280,6 +292,71 @@ generate_event_msg_meta (gpointer data, gint class_id, NvDsObjectMeta * obj_para
   }
 }
 
+int write_frame(GstBuffer *buf)
+{
+  NvDsMetaList * l_frame = NULL;
+  NvDsMetaList * l_user_meta = NULL;
+  // Get original raw data
+  GstMapInfo in_map_info;
+  char* src_data = NULL;
+  if (!gst_buffer_map (buf, &in_map_info, GST_MAP_READ)) {
+    g_print ("Error: Failed to map gst buffer\n");
+    gst_buffer_unmap (buf, &in_map_info);
+    return GST_PAD_PROBE_OK;
+  }
+  NvBufSurface *surface = (NvBufSurface *)in_map_info.data;
+  NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
+  l_frame = batch_meta->frame_meta_list;
+  if (l_frame) {
+    NvDsFrameMeta *frame_meta = (NvDsFrameMeta *) (l_frame->data);
+    /* Validate user meta */
+    src_data = (char*) malloc(surface->surfaceList[frame_meta->batch_id].dataSize);
+    if(src_data == NULL) {
+      g_print("Error: failed to malloc src_data \n");
+    }
+#ifdef PLATFORM_TEGRA
+    NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
+    NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
+    unsigned int offset = 0;
+    for(unsigned int num_planes=0; num_planes < pParams->num_planes; num_planes++){
+        if(num_planes>0)
+            offset += pParams->height[num_planes-1]*(pParams->bytesPerPix[num_planes-1]*pParams->width[num_planes-1]);
+        for (unsigned int h = 0; h < pParams->height[num_planes]; h++) {
+          memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
+                (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
+                pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
+                );
+        }
+    }
+    NvBufSurfaceSyncForDevice (surface, -1, -1);
+    NvBufSurfaceUnMap (surface, -1, -1);
+#else
+    cudaMemcpy((void*)src_data,
+               (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
+               surface->surfaceList[frame_meta->batch_id].dataSize,
+               cudaMemcpyDeviceToHost);
+#endif
+
+
+    gint frame_width = (gint)surface->surfaceList[frame_meta->batch_id].width;
+    gint frame_height = (gint)surface->surfaceList[frame_meta->batch_id].height;
+    gint frame_step = surface->surfaceList[frame_meta->batch_id].pitch;
+    cv::Mat frame = cv::Mat(frame_height, frame_width, CV_8UC4, src_data, frame_step);
+    // g_print("%d\n",frame.channels());
+    // g_print("%d\n",frame.rows);
+    // g_print("%d\n",frame.cols);
+
+    cv::Mat out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
+    cv::cvtColor(frame, out_mat, CV_RGBA2BGR);
+    cv::imwrite("test.jpg", out_mat);
+    if(src_data != NULL) {
+      free(src_data);
+      src_data = NULL;
+    }
+  }
+  gst_buffer_unmap (buf, &in_map_info);
+}
+
 /* osd_sink_pad_buffer_probe  will extract metadata received on OSD sink pad
  * and update params for drawing rectangle, object information etc. */
 
@@ -288,6 +365,9 @@ osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info,
     gpointer u_data)
 {
   GstBuffer *buf = (GstBuffer *) info->data;
+
+  write_frame(buf);
+
   NvDsFrameMeta *frame_meta = NULL;
   NvOSD_TextParams *txt_params = NULL;
   guint vehicle_count = 0;
