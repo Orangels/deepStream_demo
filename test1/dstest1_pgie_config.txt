@@ -60,10 +60,10 @@
 [property]
 gpu-id=0
 net-scale-factor=0.0039215697906911373
-model-file=/home/nano/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/resnet10.caffemodel
-proto-file=/home/nano/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/resnet10.prototxt
-labelfile-path=/home/nano/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/labels.txt
-int8-calib-file=/home/nano/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/cal_trt.bin
+model-file=/home/user/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/resnet10.caffemodel
+proto-file=/home/user/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/resnet10.prototxt
+labelfile-path=/home/user/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/labels.txt
+int8-calib-file=/home/user/Downloads/deepstream_sdk_v4.0.2_jetson/samples/models/Primary_Detector/cal_trt.bin
 batch-size=1
 network-mode=1
 num-detected-classes=4

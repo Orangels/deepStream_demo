@@ -91,44 +91,7 @@ int write_frame(GstBuffer *buf)
         if(src_data == NULL) {
             g_print("Error: failed to malloc src_data \n");
         }
-//#ifdef PLATFORM_TEGRA
-//
-//        NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
-//        NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
-//        unsigned int offset = 0;
-//        for(unsigned int num_planes=0; num_planes < pParams->num_planes; num_planes++){
-//            if(num_planes>0)
-//                offset += pParams->height[num_planes-1]*(pParams->bytesPerPix[num_planes-1]*pParams->width[num_planes-1]);
-//            for (unsigned int h = 0; h < pParams->height[num_planes]; h++) {
-//              memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
-//                    (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
-//                    pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
-//                    );
-//            }
-//        }
-//        NvBufSurfaceSyncForDevice (surface, -1, -1);
-//        NvBufSurfaceUnMap (surface, -1, -1);
-//#else
-//        cudaMemcpy((void*)src_data,
-//                   (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
-//                   surface->surfaceList[frame_meta->batch_id].dataSize,
-//                   cudaMemcpyDeviceToHost);
-//
-////        cudaMemcpy((void*)src_data,
-////                   (void*)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[0],
-////                   surface->surfaceList[frame_meta->batch_id].dataSize,
-////                   cudaMemcpyDeviceToHost);
-//#endif
-
-// ls change mode
-
 #ifdef PLATFORM_TEGRA
-
-        cudaMemcpy((void*)src_data,
-           (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
-           surface->surfaceList[frame_meta->batch_id].dataSize,
-           cudaMemcpyDeviceToHost);
-#else
 
         NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
         NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
@@ -137,17 +100,26 @@ int write_frame(GstBuffer *buf)
             if(num_planes>0)
                 offset += pParams->height[num_planes-1]*(pParams->bytesPerPix[num_planes-1]*pParams->width[num_planes-1]);
             for (unsigned int h = 0; h < pParams->height[num_planes]; h++) {
-                memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
-                       (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
-                       pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
-                );
+              memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
+                    (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
+                    pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
+                    );
             }
         }
         NvBufSurfaceSyncForDevice (surface, -1, -1);
         NvBufSurfaceUnMap (surface, -1, -1);
+#else
+        cout << "asd" << endl;
+        cudaMemcpy((void*)src_data,
+                   (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
+                   surface->surfaceList[frame_meta->batch_id].dataSize,
+                   cudaMemcpyDeviceToHost);
+
+////        cudaMemcpy((void*)src_data,
+////                   (void*)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[0],
+////                   surface->surfaceList[frame_meta->batch_id].dataSize,
+////                   cudaMemcpyDeviceToHost);
 #endif
-
-
 
         gint frame_width = (gint)surface->surfaceList[frame_meta->batch_id].width;
         gint frame_height = (gint)surface->surfaceList[frame_meta->batch_id].height;
@@ -184,63 +156,6 @@ static GstPadProbeReturn osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInf
     GstBuffer *buf = (GstBuffer *) info->data;
 
     write_frame(buf);
-
-//    GstMapInfo in_map_info;
-//    NvBufSurface *surface = NULL;
-//    NvDsBatchMeta *batch_meta = NULL;
-//    NvDsMetaList *l_frame = NULL;
-//    NvDsFrameMeta *frame_meta = NULL;
-//
-//    memset (&in_map_info, 0, sizeof (in_map_info));
-//
-//    if (gst_buffer_map (buf, &in_map_info, GST_MAP_READWRITE)){
-//        surface = (NvBufSurface *) in_map_info.data;
-//
-//        g_print("%d \n" , NvBufSurfaceMap(surface, -1, -1, NVBUF_MAP_READ_WRITE));
-//        NvBufSurfaceSyncForCpu(surface, -1, -1);
-//
-//        batch_meta = gst_buffer_get_nvds_batch_meta(buf);
-//
-//        for (l_frame = batch_meta->frame_meta_list; l_frame != NULL; l_frame = l_frame->next){
-//            frame_meta = (NvDsFrameMeta *)(l_frame->data);
-//            gint frame_width = (gint)surface->surfaceList[frame_meta->batch_id].width;
-//            gint frame_height = (gint)surface->surfaceList[frame_meta->batch_id].height;
-//            void *frame_data = surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[0];
-//            size_t frame_step = surface->surfaceList[frame_meta->batch_id].pitch;
-//
-////            cv::Mat frame = cv::Mat(frame_height*1.5, frame_width, CV_8UC1, frame_data, frame_step);
-//            cv::Mat frame = cv::Mat(frame_height,frame_width, CV_8UC1, frame_data, frame_step);
-//            //cv::Mat dst;
-//            //cv::resize(frame, dst, cv::Size(frame_width, frame_height));
-//            //cv::Mat out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
-//            //cv::cvtColor(frame, out_mat, CV_RGBA2RGB);
-//
-//            cout << "********" << endl;
-//            g_print("%d\n",frame.channels());
-//            g_print("%d\n",frame.rows);
-//            g_print("%d\n",frame.cols);
-//            cout << "!!!!!!!!" << endl;
-//            cout << frame_width << endl;
-//            cout << frame_height << endl;
-//            cout << "********" << endl;
-//
-//            string img_path;
-//            img_path = "./imgs/" + to_string(frame_number) + ".jpg";
-//            cv::Mat out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
-//            cv::cvtColor(frame, out_mat, CV_YUV2RGB_NV21);
-////            createAlphaMat(frame);
-//            /*createAlphaMat(frame);
-//            vector<int> compression_params;
-//            compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-//            compression_params.push_back(9);*/
-//            cv::imwrite(img_path, frame);
-////            cv::imwrite("test.jpg", out_mat);
-//        }
-//
-//        NvBufSurfaceUnMap(surface, -1, -1);
-//    }
-//
-//    gst_buffer_unmap (buf, &in_map_info);
 
     return GST_PAD_PROBE_OK;
 }

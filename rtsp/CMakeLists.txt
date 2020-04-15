@@ -21,7 +21,7 @@ ENDIF (CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 if (${CMAKE_SYSTEM} MATCHES "Linux-4.9.140-tegra")
     message("On TEGRA PLATFORM.")
-        add_definitions(-DPLATFORM_TEGRA)
+    add_definitions(-DPLATFORM_TEGRA)
     set(SYS_USR_LIB /usr/lib/aarch64-linux-gnu)
     set(SYS_LIB /lib/aarch64-linux-gnu)
     set(DS_LIB /opt/nvidia/deepstream/deepstream-4.0/lib)
@@ -32,6 +32,7 @@ if (${CMAKE_SYSTEM} MATCHES "Linux-4.9.140-tegra")
             /opt/nvidia/deepstream/deepstream-4.0/lib/libnvbufsurface.so
     )
 else ()
+    add_definitions(-DPLATFORM_TEGRA)
     message("On X86 PLATFORM.")
     set(SYS_USR_LIB /usr/lib/x86_64-linux-gnu)
     set(SYS_LIB /lib/x86_64-linux-gnu)
@@ -40,6 +41,7 @@ endif ()
 execute_process(COMMAND mkdir imgs)
 
 find_package(OpenCV REQUIRED)
+message(${OpenCV_INCLUDE_DIRS})
 
 include_directories(
         includes
@@ -47,7 +49,7 @@ include_directories(
         /usr/include/glib-2.0
         ${SYS_USR_LIB}/glib-2.0/include
         ${OpenCV_INCLUDE_DIRS}
-        /usr/local/cuda/targets/aarch64-linux/include/
+        /usr/local/cuda/targets/x86_64-linux/include
 )
 link_libraries(
         ${SYS_USR_LIB}/libgtk3-nocsd.so.0
@@ -64,7 +66,10 @@ link_libraries(
         ${SYS_LIB}/libpcre.so.3
         ${OpenCV_LIBS}
         cudart
-
+        /opt/nvidia/deepstream/deepstream-4.0/lib/libnvdsgst_meta.so
+        /opt/nvidia/deepstream/deepstream-4.0/lib/libnvds_meta.so
+        /opt/nvidia/deepstream/deepstream-4.0/lib/libnvbufsurftransform.so
+        /opt/nvidia/deepstream/deepstream-4.0/lib/libnvbufsurface.so
 )
 
 add_executable(deepstream_test1_app_ deepstream_test1_app.c)

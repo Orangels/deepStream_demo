@@ -55,11 +55,13 @@ int writeImage(GstBuffer *buf){
     // Get original raw data
     GstMapInfo in_map_info;
     char* src_data = NULL;
+    cout << "111" << endl;
     if (!gst_buffer_map (buf, &in_map_info, GST_MAP_READ)) {
         g_print ("Error: Failed to map gst buffer\n");
         gst_buffer_unmap (buf, &in_map_info);
         return GST_PAD_PROBE_OK;
     }
+    cout << "222" << endl;
     NvBufSurface *surface = (NvBufSurface *)in_map_info.data;
     NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
     l_frame = batch_meta->frame_meta_list;
@@ -72,24 +74,31 @@ int writeImage(GstBuffer *buf){
         }
 
 // ls change mode
-
+    cout << "start transform" << endl;
 #ifdef PLATFORM_TEGRA
-        NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
-        NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
-        unsigned int offset = 0;
-        for(unsigned int num_planes=0; num_planes < pParams->num_planes; num_planes++){
-            if(num_planes>0)
-                offset += pParams->height[num_planes-1]*(pParams->bytesPerPix[num_planes-1]*pParams->width[num_planes-1]);
-            for (unsigned int h = 0; h < pParams->height[num_planes]; h++) {
-                memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
-                       (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
-                       pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
-                );
-            }
-        }
-        NvBufSurfaceSyncForDevice (surface, -1, -1);
-        NvBufSurfaceUnMap (surface, -1, -1);
+        cout << "transform PLATFORM_TEGRA mode" << endl;
+//        NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
+//        NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
+//        unsigned int offset = 0;
+//        for(unsigned int num_planes=0; num_planes < pParams->num_planes; num_planes++){
+//            if(num_planes>0)
+//                offset += pParams->height[num_planes-1]*(pParams->bytesPerPix[num_planes-1]*pParams->width[num_planes-1]);
+//            for (unsigned int h = 0; h < pParams->height[num_planes]; h++) {
+//                memcpy((void *)(src_data+offset+h*pParams->bytesPerPix[num_planes]*pParams->width[num_planes]),
+//                       (void *)((char *)surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[num_planes]+h*pParams->pitch[num_planes]),
+//                       pParams->bytesPerPix[num_planes]*pParams->width[num_planes]
+//                );
+//            }
+//        }
+//        NvBufSurfaceSyncForDevice (surface, -1, -1);
+//        NvBufSurfaceUnMap (surface, -1, -1);
+
+        cudaMemcpy((void*)src_data,
+                   (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
+                   surface->surfaceList[frame_meta->batch_id].dataSize,
+                   cudaMemcpyDeviceToHost);
 #else
+        cout << "transform server mode" << endl;
         cudaMemcpy((void*)src_data,
                    (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
                    surface->surfaceList[frame_meta->batch_id].dataSize,
@@ -125,7 +134,7 @@ int writeImage(GstBuffer *buf){
 }
 
 static GstPadProbeReturn osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info, gpointer u_data){
-    g_print("%d\n",frame_number++);
+    g_print("write num %d\n",frame_number++);
 
     GstBuffer *buf = (GstBuffer *) info->data;
     writeImage(buf);
@@ -155,9 +164,9 @@ int main(int argc, char *argv[]) {
 //    GstElement *pgie = gst_element_factory_make("nvinfer", "primary-nvinference-engine");
     GstElement *nvvidconv = gst_element_factory_make("nvvideoconvert", "nvvideo-converter");
     GstElement *nvosd = gst_element_factory_make("nvdsosd", "nv-onscreendisplay");
-    GstElement *transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
+//    GstElement *transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
     sink = gst_element_factory_make ( "fakesink", "sink");
-    if (!pipeline || !streammux  || !nvvidconv || !nvosd || !transform) {
+    if (!pipeline || !streammux  || !nvvidconv || !nvosd ) {
         g_printerr("One element could not be created. Exiting.\n");
         return -1;
     }
