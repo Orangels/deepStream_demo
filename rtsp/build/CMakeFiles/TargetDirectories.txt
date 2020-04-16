@@ -1,4 +1,0 @@
-/home/user/Program/ls-dev/deepStream_demo/rtsp/build/CMakeFiles/rebuild_cache.dir
-/home/user/Program/ls-dev/deepStream_demo/rtsp/build/CMakeFiles/deepstream_test1_app_.dir
-/home/user/Program/ls-dev/deepStream_demo/rtsp/build/CMakeFiles/edit_cache.dir
-/home/user/Program/ls-dev/deepStream_demo/rtsp/build/CMakeFiles/deepstream_test1_app_demo_rtsp_.dir
