@@ -61,6 +61,9 @@ int writeImage(GstBuffer *buf){
         return GST_PAD_PROBE_OK;
     }
     NvBufSurface *surface = (NvBufSurface *)in_map_info.data;
+
+    g_print("mem type : %d\n", surface->memType);
+
     NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
     l_frame = batch_meta->frame_meta_list;
     if (l_frame) {
@@ -95,8 +98,6 @@ int writeImage(GstBuffer *buf){
                    surface->surfaceList[frame_meta->batch_id].dataSize,
                    cudaMemcpyDeviceToHost);
 #endif
-
-
 
         gint frame_width = (gint)surface->surfaceList[frame_meta->batch_id].width;
         gint frame_height = (gint)surface->surfaceList[frame_meta->batch_id].height;
@@ -134,6 +135,8 @@ static GstPadProbeReturn osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInf
     return GST_PAD_PROBE_OK;
 }
 
+
+
 int main(int argc, char *argv[]) {
     GstElement *pipeline = NULL, *source = NULL, *rtppay = NULL, *parse = NULL,
             *decoder = NULL, *sink = NULL, *filter1 = NULL;
@@ -156,7 +159,8 @@ int main(int argc, char *argv[]) {
     GstElement *nvvidconv = gst_element_factory_make("nvvideoconvert", "nvvideo-converter");
     GstElement *nvosd = gst_element_factory_make("nvdsosd", "nv-onscreendisplay");
     GstElement *transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
-    sink = gst_element_factory_make ( "fakesink", "sink");
+//    sink = gst_element_factory_make ( "fakesink", "sink");
+    sink = gst_element_factory_make ( "nveglglessink", "sink");
     if (!pipeline || !streammux  || !nvvidconv || !nvosd || !transform) {
         g_printerr("One element could not be created. Exiting.\n");
         return -1;
@@ -183,7 +187,7 @@ int main(int argc, char *argv[]) {
 //                     nvvidconv, nvosd, transform, sink, NULL);
     gst_bin_add_many(GST_BIN (pipeline),
                      source, rtppay, parse, decoder, streammux,
-                     nvvidconv, nvosd, sink, NULL);
+                     nvvidconv, nvosd, transform, sink, NULL);
 #else
     gst_bin_add_many(GST_BIN (pipeline),
                      source, rtppay, parse, decoder, sink, NULL);
@@ -224,7 +228,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 //    if (!gst_element_link_many(streammux, pgie, nvvidconv, nvosd, transform, sink, NULL)) {
-    if (!gst_element_link_many(streammux, nvvidconv, nvosd, sink, NULL)) {
+    if (!gst_element_link_many(streammux, nvvidconv, nvosd, transform, sink, NULL)) {
         printf("\nFailed to link elements 2.\n");
         return -1;
     }
@@ -236,7 +240,7 @@ int main(int argc, char *argv[]) {
 #endif
 
     GstPad *osd_sink_pad = NULL;
-    osd_sink_pad = gst_element_get_static_pad (sink, "sink");
+    osd_sink_pad = gst_element_get_static_pad (nvosd, "src");
 
     if (!osd_sink_pad)
         g_print ("Unable to get sink pad\n");
