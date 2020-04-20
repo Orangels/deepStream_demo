@@ -1,24 +1,8 @@
-#include "stdio.h"
-#include "gst/gst.h"
+//
+// Created by Orangels on 2020-04-19.
+//
 
-#include <opencv2/core.hpp>
-#include <opencv2/videoio.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/imgproc/types_c.h>
-#include "gstnvdsmeta.h"
-#include "nvbufsurface.h"
-#include "nvbufsurftransform.h"
-#include <iostream>
-using namespace std;
-using namespace cv;
-
-#define RTSPCAM "rtsp://admin:sx123456@192.168.88.38:554/h264/ch2/sub/av_stream"
-#define MUXER_OUTPUT_WIDTH 1920
-#define MUXER_OUTPUT_HEIGHT 1080
-#define MUXER_BATCH_TIMEOUT_USEC 4000000
-
-gint frame_number = 0;
+#include "dsHandler.h"
 
 static void cb_new_rtspsrc_pad(GstElement *element, GstPad *pad, gpointer data) {
     gchar *name;
@@ -49,20 +33,22 @@ static void cb_new_rtspsrc_pad(GstElement *element, GstPad *pad, gpointer data) 
 }
 
 
-int writeImage(GstBuffer *buf){
+Mat writeImage(GstBuffer *buf){
     NvDsMetaList * l_frame = NULL;
     NvDsMetaList * l_user_meta = NULL;
     // Get original raw data
     GstMapInfo in_map_info;
     char* src_data = NULL;
-    cout << "111" << endl;
+    cv::Mat out_mat;
     if (!gst_buffer_map (buf, &in_map_info, GST_MAP_READ)) {
         g_print ("Error: Failed to map gst buffer\n");
         gst_buffer_unmap (buf, &in_map_info);
-        return GST_PAD_PROBE_OK;
+//        return GST_PAD_PROBE_OK;
     }
-    cout << "222" << endl;
     NvBufSurface *surface = (NvBufSurface *)in_map_info.data;
+
+    g_print("mem type : %d\n", surface->memType);
+
     NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta (buf);
     l_frame = batch_meta->frame_meta_list;
     if (l_frame) {
@@ -74,9 +60,8 @@ int writeImage(GstBuffer *buf){
         }
 
 // ls change mode
-        cout << "start transform" << endl;
+
 #ifdef PLATFORM_TEGRA
-        cout << "transform PLATFORM_TEGRA mode" << endl;
         NvBufSurfaceMap (surface, -1, -1, NVBUF_MAP_READ);
         NvBufSurfacePlaneParams *pParams = &surface->surfaceList[frame_meta->batch_id].planeParams;
         unsigned int offset = 0;
@@ -92,27 +77,16 @@ int writeImage(GstBuffer *buf){
         }
         NvBufSurfaceSyncForDevice (surface, -1, -1);
         NvBufSurfaceUnMap (surface, -1, -1);
-
-//        cudaMemcpy((void*)src_data,
-//                   (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
-//                   surface->surfaceList[frame_meta->batch_id].dataSize,
-//                   cudaMemcpyDeviceToHost);
 #else
-        cout << "transform server mode" << endl;
         cudaMemcpy((void*)src_data,
                    (void*)surface->surfaceList[frame_meta->batch_id].dataPtr,
                    surface->surfaceList[frame_meta->batch_id].dataSize,
                    cudaMemcpyDeviceToHost);
 #endif
 
-
-
         gint frame_width = (gint)surface->surfaceList[frame_meta->batch_id].width;
         gint frame_height = (gint)surface->surfaceList[frame_meta->batch_id].height;
         gint frame_step = surface->surfaceList[frame_meta->batch_id].pitch;
-
-//        void *frame_data = surface->surfaceList[frame_meta->batch_id].mappedAddr.addr[0];
-//        cv::Mat frame = cv::Mat(frame_height, frame_width, CV_8UC4, frame_data, frame_step);
 
         cv::Mat frame = cv::Mat(frame_height, frame_width, CV_8UC4, src_data, frame_step);
         g_print("%d\n",frame.channels());
@@ -120,35 +94,45 @@ int writeImage(GstBuffer *buf){
         g_print("%d\n",frame.cols);
 
         string img_path;
+        int frame_number = dsHandler::pic_num;
+        dsHandler::pic_num++;
         img_path = "./imgs/" + to_string(frame_number) + ".jpg";
 
-        cv::Mat out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
+//        cv::Mat out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
+        out_mat = cv::Mat (cv::Size(frame_width, frame_height), CV_8UC3);
         cv::cvtColor(frame, out_mat, CV_RGBA2BGR);
-        cv::imwrite(img_path, out_mat);
+//        cv::imwrite(img_path, out_mat);
         if(src_data != NULL) {
             free(src_data);
             src_data = NULL;
         }
     }
     gst_buffer_unmap (buf, &in_map_info);
+    return out_mat;
 }
 
-static GstPadProbeReturn osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info, gpointer u_data){
-    g_print("write num %d\n",frame_number++);
-
+GstPadProbeReturn dsHandler::osd_sink_pad_buffer_probe (GstPad * pad, GstPadProbeInfo * info, gpointer u_data){
     GstBuffer *buf = (GstBuffer *) info->data;
-    writeImage(buf);
+    Mat frame = writeImage(buf);
 
+    std::unique_lock<std::mutex> guard(myMutex);
+    imgQueue.push(frame);
+    con_v_notification.notify_all();
+    guard.unlock();
 
     return GST_PAD_PROBE_OK;
 }
 
-int main(int argc, char *argv[]) {
-    GstElement *pipeline = NULL, *source = NULL, *rtppay = NULL, *parse = NULL,
-            *decoder = NULL, *sink = NULL, *filter1 = NULL;
-    GstCaps *filtercaps = NULL;
 
-    gst_init(&argc, &argv);
+dsHandler::dsHandler(){
+
+}
+
+dsHandler::dsHandler(string vRTSPCAM, int vMUXER_OUTPUT_WIDTH, int vMUXER_OUTPUT_HEIGHT, int vMUXER_BATCH_TIMEOUT_USEC) :
+        RTSPCAM(vRTSPCAM), MUXER_OUTPUT_WIDTH(vMUXER_OUTPUT_WIDTH), MUXER_OUTPUT_HEIGHT(vMUXER_OUTPUT_HEIGHT),
+        MUXER_BATCH_TIMEOUT_USEC(vMUXER_BATCH_TIMEOUT_USEC){
+
+    gst_init(NULL, NULL);
 
     /// Build Pipeline
     pipeline = gst_pipeline_new("ls");
@@ -168,7 +152,6 @@ int main(int argc, char *argv[]) {
     sink = gst_element_factory_make ( "fakesink", "sink");
     if (!pipeline || !streammux  || !nvvidconv || !nvosd ) {
         g_printerr("One element could not be created. Exiting.\n");
-        return -1;
     }
     g_object_set(G_OBJECT (streammux), "width", MUXER_OUTPUT_WIDTH, "height",
                  MUXER_OUTPUT_HEIGHT, "batch-size", 1,
@@ -183,7 +166,7 @@ int main(int argc, char *argv[]) {
         g_printerr("One element could not be created.\n");
     }
     g_object_set(G_OBJECT (sink), "sync", FALSE, NULL);
-    g_object_set(GST_OBJECT(source), "location", RTSPCAM, NULL);
+    g_object_set(GST_OBJECT(source), "location", RTSPCAM.c_str(), NULL);
 
     /// 加入插件
 #ifdef PLATFORM_TEGRA
@@ -208,18 +191,15 @@ int main(int argc, char *argv[]) {
     sinkpad = gst_element_get_request_pad(streammux, pad_name_sink);
     if (!sinkpad) {
         g_printerr("Streammux request sink pad failed. Exiting.\n");
-        return -1;
     }
     //获取指定element中的指定pad  该element为 streammux
     srcpad = gst_element_get_static_pad(decoder, pad_name_src);
     if (!srcpad) {
         g_printerr("Decoder request src pad failed. Exiting.\n");
-        return -1;
     }
 
     if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK) {
         g_printerr("Failed to link decoder to stream muxer. Exiting.\n");
-        return -1;
     }
     //gst_pad_link
     gst_object_unref(sinkpad);
@@ -230,17 +210,14 @@ int main(int argc, char *argv[]) {
 #ifdef PLATFORM_TEGRA
     if (!gst_element_link_many(rtppay, parse, decoder, NULL)) {
         printf("\nFailed to link elements 0.\n");
-        return -1;
     }
 //    if (!gst_element_link_many(streammux, pgie, nvvidconv, nvosd, transform, sink, NULL)) {
     if (!gst_element_link_many(streammux, nvvidconv, nvosd, sink, NULL)) {
         printf("\nFailed to link elements 2.\n");
-        return -1;
     }
 #else
     if (!gst_element_link_many(rtppay, parse, decoder, sink, NULL)) {
         printf("\nFailed to link elements.\n");
-        return -1;
     }
 #endif
 
@@ -252,7 +229,9 @@ int main(int argc, char *argv[]) {
     else
         gst_pad_add_probe (osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
                            osd_sink_pad_buffer_probe, NULL, NULL);
+}
 
+void dsHandler::run(){
     /// 开始运行
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
 
@@ -267,5 +246,4 @@ int main(int argc, char *argv[]) {
 
     gst_element_set_state(pipeline, GST_STATE_NULL);
     gst_object_unref(pipeline);
-
 }
